@@ -2153,31 +2153,151 @@ export interface ZodArrayDef<T extends ZodTypeAny = ZodTypeAny>
   maxLength: { value: number; message?: string } | null;
 }
 
-export type ArraySize<
+export type Tuple<
   T,
   N extends number,
   Acc extends T[] = []
-> = Acc["length"] extends N ? Acc : ArraySize<T, N, [T, ...Acc]>;
+> = Acc["length"] extends N ? Acc : Tuple<T, N, [T, ...Acc]>;
 
 export type ArrayCardinality =
-  | "many"
   | { atleast: number }
   | { exact: number }
   | { atmost: number };
+
+export type NormalisedArrayCardinality =
+  | { exact: number }
+  | { atleast: number; atmost?: number }
+  | { atleast?: number; atmost: number };
+
+export type Larger<
+  A extends number,
+  B extends number,
+  Acc extends void[] = []
+> = Acc["length"] extends A
+  ? B
+  : Acc["length"] extends B
+  ? A
+  : Larger<A, B, [void, ...Acc]>;
+
+export type Smaller<
+  A extends number,
+  B extends number,
+  Acc extends void[] = []
+> = Acc["length"] extends A
+  ? A
+  : Acc["length"] extends B
+  ? B
+  : Smaller<A, B, [void, ...Acc]>;
+
+export type CombineCardinalityHelper<C1, C2> = C1 extends ArrayCardinality
+  ? C2 extends ArrayCardinality
+    ? CombineCardinality<C1, C2>
+    : C1
+  : C2 extends ArrayCardinality
+  ? C2
+  : {};
+
+export type CombineExactCardinality<
+  C1 extends ArrayCardinality & { exact: number },
+  C2 extends ArrayCardinality & { exact: number }
+> = C1["exact"] extends C2["exact"]
+  ? { exact: C1["exact"] } & CombineCardinalityHelper<
+      Omit<C1, "exact">,
+      Omit<C2, "exact">
+    >
+  : never;
+
+export type CombineAtMostCardinality<
+  C1 extends ArrayCardinality & { atmost: number },
+  C2 extends ArrayCardinality & { atmost: number }
+> = { atmost: Smaller<C1["atmost"], C2["atmost"]> } & CombineCardinalityHelper<
+  Omit<C1, "atmost">,
+  Omit<C2, "atmost">
+>;
+
+export type CombineAtLeastCardinality<
+  C1 extends ArrayCardinality & { atleast: number },
+  C2 extends ArrayCardinality & { atleast: number }
+> = {
+  atleast: Larger<C1["atleast"], C2["atleast"]>;
+} & CombineCardinalityHelper<Omit<C1, "atleast">, Omit<C2, "atleast">>;
+
+export type CombineCardinality<
+  C1 extends ArrayCardinality,
+  C2 extends ArrayCardinality
+> = C1 extends { exact: number }
+  ? C2 extends { exact: number }
+    ? CombineExactCardinality<C1, C2>
+    : { exact: C1["exact"] } & CombineCardinalityHelper<Omit<C1, "exact">, C2>
+  : C2 extends { exact: number }
+  ? { exact: C2["exact"] } & CombineCardinalityHelper<C1, Omit<C2, "exact">>
+  : C1 extends { atmost: number }
+  ? C2 extends { atmost: number }
+    ? CombineAtMostCardinality<C1, C2>
+    : { atmost: C1["atmost"] } & CombineCardinalityHelper<
+        Omit<C1, "atmost">,
+        C2
+      >
+  : C2 extends { atmost: number }
+  ? { atmost: C2["atmost"] } & CombineCardinalityHelper<C1, Omit<C2, "atmost">>
+  : C1 extends { atleast: number }
+  ? C2 extends { atleast: number }
+    ? CombineAtLeastCardinality<C1, C2>
+    : { atleast: C1["atleast"] } & CombineCardinalityHelper<
+        Omit<C1, "atleast">,
+        C2
+      >
+  : C2 extends { atleast: number }
+  ? { atleast: C2["atleast"] } & CombineCardinalityHelper<
+      C1,
+      Omit<C2, "atleast">
+    >
+  : never;
+
+export type NormaliseCardinalityHelper<A> = A extends ArrayCardinality
+  ? NormaliseCardinality<A>
+  : {};
+
+export type NormaliseCardinality<C extends ArrayCardinality> = C extends {
+  exact: number;
+  atleast: number;
+}
+  ? C["exact"] extends Larger<C["exact"], C["atleast"]>
+    ? { exact: C["exact"] } & NormaliseCardinalityHelper<
+        Omit<C, "atleast" | "exact">
+      >
+    : never
+  : C extends { exact: number; atmost: number }
+  ? C["exact"] extends Smaller<C["exact"], C["atmost"]>
+    ? { exact: C["exact"] } & NormaliseCardinalityHelper<
+        Omit<C, "atmost" | "exact">
+      >
+    : never
+  : C extends { atleast: number; atmost: number }
+  ? C["atleast"] extends Smaller<C["atleast"], C["atmost"]>
+    ? C["atmost"] extends C["atleast"]
+      ? { exact: C["atleast"] }
+      : {
+          atleast: C["atleast"];
+          atmost: C["atmost"];
+        } & NormaliseCardinalityHelper<Omit<C, "atleast" | "atmost">>
+    : never
+  : C;
+
 export type arrayOutputType<
   T extends ZodTypeAny,
-  Cardinality extends ArrayCardinality = "many"
-> = Cardinality extends "many"
-  ? T["_output"][]
+  Cardinality extends NormalisedArrayCardinality = { atleast: 0 }
+> = Cardinality extends { exact: number }
+  ? Tuple<T["_input"], Cardinality["exact"]>
   : Cardinality extends { atleast: number }
-  ? [...ArraySize<T["_input"], Cardinality["atleast"]>, ...T["_input"][]]
-  : Cardinality extends { exact: number }
-  ? ArraySize<T["_input"], Cardinality["exact"]>
-  : never;
+  ? [...Tuple<T["_input"], Cardinality["atleast"]>, ...T["_input"][]]
+  : Cardinality extends { atmost: number }
+  ? Tuple<T["_input"] | undefined, Cardinality["atmost"]>
+  : T["_input"][];
 
 export class ZodArray<
   T extends ZodTypeAny,
-  Cardinality extends ArrayCardinality = "many"
+  Cardinality extends ArrayCardinality = { atleast: 0 }
 > extends ZodType<
   arrayOutputType<T, Cardinality>,
   ZodArrayDef<T>,
@@ -2267,29 +2387,40 @@ export class ZodArray<
     return this._def.type;
   }
 
-  min(minLength: number, message?: errorUtil.ErrMessage): this {
+  min<L extends number>(
+    minLength: L,
+    message?: errorUtil.ErrMessage
+  ): ZodArray<T, CombineCardinality<Cardinality, { atleast: L }>> {
     return new ZodArray({
       ...this._def,
       minLength: { value: minLength, message: errorUtil.toString(message) },
-    }) as any;
+    });
   }
 
-  max(maxLength: number, message?: errorUtil.ErrMessage): this {
+  max<L extends number>(
+    maxLength: L,
+    message?: errorUtil.ErrMessage
+  ): ZodArray<T, CombineCardinality<Cardinality, { atmost: L }>> {
     return new ZodArray({
       ...this._def,
       maxLength: { value: maxLength, message: errorUtil.toString(message) },
-    }) as any;
+    });
   }
 
-  length(len: number, message?: errorUtil.ErrMessage): this {
+  length<L extends number>(
+    len: L,
+    message?: errorUtil.ErrMessage
+  ): ZodArray<T, CombineCardinality<Cardinality, { exact: L }>> {
     return new ZodArray({
       ...this._def,
       exactLength: { value: len, message: errorUtil.toString(message) },
-    }) as any;
+    });
   }
 
-  nonempty(message?: errorUtil.ErrMessage): ZodArray<T, { atleast: 1 }> {
-    return this.min(1, message) as any;
+  nonempty(
+    message?: errorUtil.ErrMessage
+  ): ZodArray<T, CombineCardinality<Cardinality, { atleast: 1 }>> {
+    return this.min(1, message);
   }
 
   static create = <T extends ZodTypeAny>(
