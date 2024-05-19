@@ -2153,13 +2153,27 @@ export interface ZodArrayDef<T extends ZodTypeAny = ZodTypeAny>
   maxLength: { value: number; message?: string } | null;
 }
 
-export type ArrayCardinality = "many" | "atleastone";
+export type ArraySize<
+  T,
+  N extends number,
+  Acc extends T[] = []
+> = Acc["length"] extends N ? Acc : ArraySize<T, N, [T, ...Acc]>;
+
+export type ArrayCardinality =
+  | "many"
+  | { atleast: number }
+  | { exact: number }
+  | { atmost: number };
 export type arrayOutputType<
   T extends ZodTypeAny,
   Cardinality extends ArrayCardinality = "many"
-> = Cardinality extends "atleastone"
-  ? [T["_output"], ...T["_output"][]]
-  : T["_output"][];
+> = Cardinality extends "many"
+  ? T["_output"][]
+  : Cardinality extends { atleast: number }
+  ? [...ArraySize<T["_input"], Cardinality["atleast"]>, ...T["_input"][]]
+  : Cardinality extends { exact: number }
+  ? ArraySize<T["_input"], Cardinality["exact"]>
+  : never;
 
 export class ZodArray<
   T extends ZodTypeAny,
@@ -2167,9 +2181,7 @@ export class ZodArray<
 > extends ZodType<
   arrayOutputType<T, Cardinality>,
   ZodArrayDef<T>,
-  Cardinality extends "atleastone"
-    ? [T["_input"], ...T["_input"][]]
-    : T["_input"][]
+  arrayOutputType<T, Cardinality>
 > {
   _parse(input: ParseInput): ParseReturnType<this["_output"]> {
     const { ctx, status } = this._processInputParams(input);
@@ -2276,7 +2288,7 @@ export class ZodArray<
     }) as any;
   }
 
-  nonempty(message?: errorUtil.ErrMessage): ZodArray<T, "atleastone"> {
+  nonempty(message?: errorUtil.ErrMessage): ZodArray<T, { atleast: 1 }> {
     return this.min(1, message) as any;
   }
 
@@ -2295,7 +2307,10 @@ export class ZodArray<
   };
 }
 
-export type ZodNonEmptyArray<T extends ZodTypeAny> = ZodArray<T, "atleastone">;
+export type ZodNonEmptyArray<T extends ZodTypeAny> = ZodArray<
+  T,
+  { atleast: 1 }
+>;
 
 /////////////////////////////////////////
 /////////////////////////////////////////
