@@ -2162,11 +2162,8 @@ export type Tuple<
 export type MaxLengthTuple<
   T,
   N extends number,
-  Ret extends T[] = [],
   Acc extends T[] = []
-> = Acc["length"] extends N
-  ? Ret
-  : Ret | MaxLengthTuple<T, N, Ret | [T, ...Acc], [T, ...Acc]>;
+> = Acc["length"] extends N ? Acc : Acc | MaxLengthTuple<T, N, [T, ...Acc]>;
 
 export type ArrayCardinality =
   | { atleast: number }
@@ -2264,7 +2261,7 @@ export type CombineCardinality<
   : never;
 
 export type NormaliseCardinalityHelper<A> = A extends ArrayCardinality
-  ? NormaliseCardinality<A>
+  ? NormaliseCardinality<ArrayCardinality>
   : {};
 
 export type NormaliseCardinality<C extends ArrayCardinality> = C extends {
@@ -2295,14 +2292,13 @@ export type NormaliseCardinality<C extends ArrayCardinality> = C extends {
 
 export type arrayOutputType<
   T extends ZodTypeAny,
-  Cardinality extends NormalisedArrayCardinality = { atleast: 0 }
+  Cardinality extends ArrayCardinality = { atleast: 0 }
 > = Cardinality extends { exact: number }
   ? Tuple<T["_input"], Cardinality["exact"]>
   : Cardinality extends { atleast: number; atmost: number }
   ? MaxLengthTuple<
       T["_input"],
       Cardinality["atmost"],
-      Tuple<T["_input"], Cardinality["atleast"]>,
       Tuple<T["_input"], Cardinality["atleast"]>
     >
   : Cardinality extends { atleast: number }
@@ -2406,7 +2402,10 @@ export class ZodArray<
   min<L extends number>(
     minLength: L,
     message?: errorUtil.ErrMessage
-  ): ZodArray<T, CombineCardinality<Cardinality, { atleast: L }>> {
+  ): ZodArray<
+    T,
+    NormaliseCardinality<CombineCardinality<Cardinality, { atleast: L }>>
+  > {
     return new ZodArray({
       ...this._def,
       minLength: { value: minLength, message: errorUtil.toString(message) },
@@ -2416,7 +2415,10 @@ export class ZodArray<
   max<L extends number>(
     maxLength: L,
     message?: errorUtil.ErrMessage
-  ): ZodArray<T, CombineCardinality<Cardinality, { atmost: L }>> {
+  ): ZodArray<
+    T,
+    NormaliseCardinality<CombineCardinality<Cardinality, { atmost: L }>>
+  > {
     return new ZodArray({
       ...this._def,
       maxLength: { value: maxLength, message: errorUtil.toString(message) },
@@ -2426,7 +2428,10 @@ export class ZodArray<
   length<L extends number>(
     len: L,
     message?: errorUtil.ErrMessage
-  ): ZodArray<T, CombineCardinality<Cardinality, { exact: L }>> {
+  ): ZodArray<
+    T,
+    NormaliseCardinality<CombineCardinality<Cardinality, { exact: L }>>
+  > {
     return new ZodArray({
       ...this._def,
       exactLength: { value: len, message: errorUtil.toString(message) },
@@ -2435,7 +2440,10 @@ export class ZodArray<
 
   nonempty(
     message?: errorUtil.ErrMessage
-  ): ZodArray<T, CombineCardinality<Cardinality, { atleast: 1 }>> {
+  ): ZodArray<
+    T,
+    NormaliseCardinality<CombineCardinality<Cardinality, { atleast: 1 }>>
+  > {
     return this.min(1, message);
   }
 
@@ -2624,8 +2632,8 @@ export class ZodObject<
     }
 
     const pairs: {
-      key: ParseReturnType<any>;
-      value: ParseReturnType<any>;
+      key: ParseReturnType<unknown>;
+      value: ParseReturnType<unknown>;
       alwaysSet?: boolean;
     }[] = [];
     for (const key of shapeKeys) {
@@ -2681,7 +2689,7 @@ export class ZodObject<
     if (ctx.common.async) {
       return Promise.resolve()
         .then(async () => {
-          const syncPairs: any[] = [];
+          const syncPairs = [];
           for (const pair of pairs) {
             const key = await pair.key;
             const value = await pair.value;
