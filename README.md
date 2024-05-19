@@ -1436,7 +1436,7 @@ z.string().array().max(5); // must contain 5 or fewer items
 z.string().array().length(5); // must contain 5 items exactly
 ```
 
-Unlike `.nonempty()` these methods do not change the inferred type.
+Like `.nonempty()` these methods do change the inferred type.
 
 ## Tuples
 

@@ -2159,6 +2159,15 @@ export type Tuple<
   Acc extends T[] = []
 > = Acc["length"] extends N ? Acc : Tuple<T, N, [T, ...Acc]>;
 
+export type MaxLengthTuple<
+  T,
+  N extends number,
+  Ret extends T[] = [],
+  Acc extends T[] = []
+> = Acc["length"] extends N
+  ? Ret
+  : Ret | MaxLengthTuple<T, N, Ret | [T, ...Acc], [T, ...Acc]>;
+
 export type ArrayCardinality =
   | { atleast: number }
   | { exact: number }
@@ -2289,10 +2298,17 @@ export type arrayOutputType<
   Cardinality extends NormalisedArrayCardinality = { atleast: 0 }
 > = Cardinality extends { exact: number }
   ? Tuple<T["_input"], Cardinality["exact"]>
+  : Cardinality extends { atleast: number; atmost: number }
+  ? MaxLengthTuple<
+      T["_input"],
+      Cardinality["atmost"],
+      Tuple<T["_input"], Cardinality["atleast"]>,
+      Tuple<T["_input"], Cardinality["atleast"]>
+    >
   : Cardinality extends { atleast: number }
   ? [...Tuple<T["_input"], Cardinality["atleast"]>, ...T["_input"][]]
   : Cardinality extends { atmost: number }
-  ? Tuple<T["_input"] | undefined, Cardinality["atmost"]>
+  ? MaxLengthTuple<T["_input"], Cardinality["atmost"]>
   : T["_input"][];
 
 export class ZodArray<

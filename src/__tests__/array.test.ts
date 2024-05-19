@@ -11,10 +11,16 @@ const intNum = z.string().array().nonempty();
 const nonEmptyMax = z.string().array().nonempty().max(2);
 
 type t1 = z.infer<typeof nonEmptyMax>;
-util.assertEqual<[string, ...string[]], t1>(true);
+util.assertEqual<[string] | [string, string], t1>(true);
 
 type t2 = z.infer<typeof minTwo>;
 util.assertEqual<[string, string, ...string[]], t2>(true);
+
+type t3 = z.infer<typeof maxTwo>;
+util.assertEqual<[] | [string] | [string, string], t3>(true);
+
+type t4 = z.infer<typeof justTwo>;
+util.assertEqual<[string, string], t4>(true);
 
 test("passing validations", () => {
   minTwo.parse(["a", "a"]);
