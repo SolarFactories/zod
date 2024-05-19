@@ -2379,6 +2379,12 @@ export type noUnrecognized<Obj extends object, Shape extends object> = {
   [k in keyof Obj]: k extends keyof Shape ? Obj[k] : never;
 };
 
+export type NonUndefinedOptional<T> = T extends object
+  ? {
+      [K in keyof T]: Omit<T, K> extends T ? Exclude<T[K], undefined> : T[K];
+    }
+  : T;
+
 function deepPartialify(schema: ZodTypeAny): any {
   if (schema instanceof ZodObject) {
     const newShape: any = {};
@@ -2558,6 +2564,16 @@ export class ZodObject<
           }
         : {}),
     }) as any;
+  }
+
+  exactOptions(): ZodObjectExactOption<
+    T,
+    UnknownKeys,
+    Catchall,
+    NonUndefinedOptional<Output>,
+    NonUndefinedOptional<Input>
+  > {
+    return new ZodObjectExactOption(this._def);
   }
 
   strip(): ZodObject<T, "strip", Catchall> {
@@ -5065,6 +5081,61 @@ export class ZodReadonly<T extends ZodTypeAny> extends ZodType<
 
   unwrap() {
     return this._def.innerType;
+  }
+}
+
+///////////////////////////////////////////
+///////////////////////////////////////////
+//////////                       //////////
+//////////  ZodObjectExactOption //////////
+//////////                       //////////
+///////////////////////////////////////////
+///////////////////////////////////////////
+
+export class ZodObjectExactOption<
+  T extends ZodRawShape,
+  UnknownKeys extends UnknownKeysParam = UnknownKeysParam,
+  Catchall extends ZodTypeAny = ZodTypeAny,
+  Output = objectOutputType<T, Catchall, UnknownKeys>,
+  Input = objectInputType<T, Catchall, UnknownKeys>
+> extends ZodObject<T, UnknownKeys, Catchall, Output, Input> {
+  override _parse(input: ParseInput): ParseReturnType<this["_output"]> {
+    const parsed = super._parse(input);
+    if (parsed instanceof Promise) {
+      return parsed.then((sync) => this.__parseSync(input, sync));
+    }
+    return this.__parseSync(input, parsed);
+  }
+
+  private __parseSync(
+    input: ParseInput,
+    parsed: SyncParseReturnType<this["_output"]>
+  ): ParseReturnType<this["_output"]> {
+    if (parsed.status !== "valid") return parsed;
+    const { value } = parsed;
+    if (typeof value !== "object" || value === null) {
+      return parsed;
+    }
+    const ctx = this._getOrReturnCtx(input);
+    for (const key in this.shape) {
+      if (!(this.shape[key] instanceof ZodOptional)) {
+        continue;
+      }
+      if (!(key in value)) {
+        continue;
+      }
+      const tmpValue = (value as any)[key];
+      if (tmpValue === undefined) {
+        const issue: ZodIssue = {
+          code: "custom",
+          message: "Explicit 'undefined' for optional key",
+          path: [...ctx.path, key],
+          fatal: true,
+        };
+        addIssueToContext(ctx, issue);
+      }
+    }
+    return ctx.common.issues.length > 0 ? INVALID : parsed;
   }
 }
 
